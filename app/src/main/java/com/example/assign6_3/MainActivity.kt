@@ -50,22 +50,29 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             Assign6_3Theme {
+
+                // true source of truth
                 val isRecordingState = remember { mutableStateOf(false) }
 
                 SoundMeterScreen(
-                    startRecording = {
-                        startAudioRecording(isRecordingState.value)
-                        isRecordingState.value = true
-                                     },
-                    stopRecording = {
-                        isRecordingState.value = false
-                        stopAudioRecording() },
-                    getRecorder = { recorder!! },
+                    start = { isRecordingState.value = true },
+                    stop = { isRecordingState.value = false },
+                    getRecorder = { recorder },
                     isRecording = isRecordingState,
                     debugFakeAudio = DEBUG_FAKE_AUDIO
                 )
+
+                // handle real recorder start/stop here
+                LaunchedEffect(isRecordingState.value) {
+                    if (isRecordingState.value) {
+                        startAudioRecording(isRecordingState.value)
+                    } else {
+                        stopAudioRecording()
+                    }
+                }
             }
         }
+
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -109,59 +116,65 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SoundMeterScreen(
-    startRecording: () -> Unit,
-    stopRecording: () -> Unit,
-    getRecorder: () -> AudioRecord,
+    start: () -> Unit,
+    stop: () -> Unit,
+    getRecorder: () -> AudioRecord?,
     isRecording: State<Boolean>,
     debugFakeAudio: Boolean
 ) {
-    var dbValue by remember { mutableFloatStateOf(0f) }
+    var dbValue by remember { mutableStateOf(0f) }
     var isLoud by remember { mutableStateOf(false) }
-    var phase = 0.0
+
+    // Phase MUST persist across iterations → store it in remember
+    var phase by remember { mutableStateOf(0.0) }
     val phaseIncrement = 2 * Math.PI * 440 / 44100.0
 
     LaunchedEffect(isRecording.value) {
         if (isRecording.value) {
-            startRecording()
 
             withContext(Dispatchers.Default) {
-                val recorder = getRecorder()
+
                 val buffer = ShortArray(1024)
 
                 while (isRecording.value) {
+
                     val read = if (debugFakeAudio) {
-                        // Fake audio generation for testing
-                        buffer.size.also {
-                            for (i in 0 until it) {
+
+                        buffer.size.also { n ->
+                            for (i in 0 until n) {
                                 phase += phaseIncrement
-                                val sample = kotlin.math.sin(phase)
-                                buffer[i] = (sample * Short.MAX_VALUE).toInt().toShort()
+                                val s = kotlin.math.sin(phase)
+                                buffer[i] = (s * Short.MAX_VALUE).toInt().toShort()
                             }
                         }
+
                     } else {
-                        // Real microphone
+                        val recorder = getRecorder() ?: 0
                         recorder.read(buffer, 0, buffer.size)
                     }
 
                     if (read > 0) {
-                        val rms = sqrt(buffer.take(read).map { it * it }.sum().toFloat() / read)
+                        // FAST + CORRECT RMS
+                        var sum = 0f
+                        for (i in 0 until read) {
+                            val v = buffer[i].toFloat()
+                            sum += v * v
+                        }
+                        val rms = kotlin.math.sqrt(sum / read)
                         val db = 20 * log10(rms / 32768f + 1e-6f)
-                        dbValue = db.coerceAtLeast(0f)
 
-                        isLoud = dbValue > 80
+                        dbValue = db.toFloat()
+                        isLoud = db > 80
                     }
-
                 }
             }
-        } else {
-            stopRecording()
         }
     }
 
-    val barHeight by animateDpAsState(targetValue = (dbValue * 2).dp)
-    val barColor by animateColorAsState(
-        if (isLoud) Color.Red else Color(0xFF00E676)
-    )
+    // UI --------------------------------------------------------
+
+    val barHeight by animateDpAsState((dbValue * 2).dp)
+    val barColor by animateColorAsState(if (isLoud) Color.Red else Color(0xFF00E676))
 
     Column(
         modifier = Modifier
@@ -170,14 +183,9 @@ fun SoundMeterScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        Text("Sound Level Meter", color = Color.White)
 
-        Text(
-            text = "Sound Level Meter",
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(Modifier.height(30.dp))
 
         Box(
             modifier = Modifier
@@ -194,34 +202,18 @@ fun SoundMeterScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Text(
-            text = "Volume: ${dbValue.toInt()} dB",
-            color = Color.White
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(Modifier.height(20.dp))
+        Text("Volume: ${dbValue.toInt()} dB", color = Color.White)
 
         if (isLoud) {
-            Text(
-                text = "⚠️ Loud Environment!",
-                color = Color.Red,
-                style = MaterialTheme.typography.titleMedium
-            )
+            Text("⚠️ Loud Environment!", color = Color.Red)
         }
 
-        Spacer(modifier = Modifier.height(40.dp))
-
-        // Start / Stop Buttons
+        Spacer(Modifier.height(40.dp))
         Row {
-            Button(onClick = startRecording, enabled = !isRecording.value) {
-                Text("Start")
-            }
-            Spacer(modifier = Modifier.width(20.dp))
-            Button(onClick = stopRecording , enabled = isRecording.value) {
-                Text("Stop")
-            }
+            Button(onClick = start, enabled = !isRecording.value) { Text("Start") }
+            Spacer(Modifier.width(20.dp))
+            Button(onClick = stop, enabled = isRecording.value) { Text("Stop") }
         }
     }
 }

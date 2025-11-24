@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -158,11 +159,7 @@ fun SoundMeterScreen(
 
                     } else {
                         val recorder = getRecorder()
-                        if (recorder != null) {
-                            recorder.read(buffer, 0, buffer.size)
-                        } else {
-                            0
-                        }
+                        recorder?.read(buffer, 0, buffer.size) ?: 0
                     }
 
                     if (read > 0) {
@@ -173,10 +170,13 @@ fun SoundMeterScreen(
                             sum += v * v
                         }
                         val rms = sqrt(sum / read)
-                        val db = 20 * log10(rms / 32768.0 + 1e-6)
+                        val dbFS = 20 * log10(rms / 32768.0 + 1e-6)
 
-                        dbValue = db.toFloat().coerceIn(-60f, 0f)
-                        isLoud = db > -20 // Threshold at -20 dB for varying test audio
+                        // Convert dBFS to positive dB scale (shift by 60)
+                        val db = dbFS + 60
+
+                        dbValue = db.toFloat().coerceIn(0f, 60f)
+                        isLoud = db > 50 // Threshold at 50 dB for varying test audio
                     }
 
                     // Small delay to simulate realistic update rate
@@ -187,8 +187,8 @@ fun SoundMeterScreen(
     }
 
     // UI --------------------------------------------------------
-    // Map dB range (-60 to 0) to height range (0 to 250)
-    val normalizedHeight = ((dbValue + 60) / 60 * 250).coerceIn(0f, 250f)
+    // Map dB range (0 to 60) to height range (0 to 250)
+    val normalizedHeight = (dbValue / 60 * 250).coerceIn(0f, 250f)
     val barHeight by animateDpAsState(normalizedHeight.dp)
     val barColor by animateColorAsState(if (isLoud) Color.Red else Color(0xFF00E676))
 
@@ -228,11 +228,12 @@ fun SoundMeterScreen(
             Spacer(Modifier.height(warningMessageHeight))
         }
 
-//        Spacer(Modifier.height(10.dp))
         Row {
             Button(onClick = start, enabled = !isRecording.value) { Text("Start") }
             Spacer(Modifier.width(20.dp))
             Button(onClick = stop, enabled = isRecording.value) { Text("Stop") }
         }
+        Text("NOTE: digital values may not align with real-world sound levels due to lack of necessary calibration and conversion rates",
+            color = Color.White, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 50.dp, vertical = 20.dp), textAlign = TextAlign.Center)
     }
 }

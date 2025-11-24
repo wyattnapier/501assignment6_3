@@ -24,9 +24,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.assign6_3.ui.theme.Assign6_3Theme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.log10
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
 
@@ -139,41 +141,55 @@ fun SoundMeterScreen(
                 while (isRecording.value) {
 
                     val read = if (debugFakeAudio) {
-
+                        // Generate random varying amplitude audio
                         buffer.size.also { n ->
+                            // Random amplitude between 0.1 and 1.0 changes every buffer
+                            val amplitude = Random.nextFloat() * 0.9f + 0.1f
+
                             for (i in 0 until n) {
                                 phase += phaseIncrement
-                                val s = kotlin.math.sin(phase)
-                                buffer[i] = (s * Short.MAX_VALUE).toInt().toShort()
+                                // Mix sine wave with some noise
+                                val sine = kotlin.math.sin(phase)
+                                val noise = Random.nextFloat() * 0.2f - 0.1f
+                                val sample = (sine + noise) * amplitude
+                                buffer[i] = (sample * Short.MAX_VALUE).toInt().toShort()
                             }
                         }
 
                     } else {
-                        val recorder = getRecorder() ?: 0
-                        recorder.read(buffer, 0, buffer.size)
+                        val recorder = getRecorder()
+                        if (recorder != null) {
+                            recorder.read(buffer, 0, buffer.size)
+                        } else {
+                            0
+                        }
                     }
 
                     if (read > 0) {
                         // FAST + CORRECT RMS
-                        var sum = 0f
+                        var sum = 0.0
                         for (i in 0 until read) {
-                            val v = buffer[i].toFloat()
+                            val v = buffer[i].toDouble()
                             sum += v * v
                         }
-                        val rms = kotlin.math.sqrt(sum / read)
-                        val db = 20 * log10(rms / 32768f + 1e-6f)
+                        val rms = sqrt(sum / read)
+                        val db = 20 * log10(rms / 32768.0 + 1e-6)
 
-                        dbValue = db.toFloat()
-                        isLoud = db > 80
+                        dbValue = db.toFloat().coerceIn(-60f, 0f)
+                        isLoud = db > -20 // Threshold at -20 dB for varying test audio
                     }
+
+                    // Small delay to simulate realistic update rate
+                    delay(50)
                 }
             }
         }
     }
 
     // UI --------------------------------------------------------
-
-    val barHeight by animateDpAsState((dbValue * 2).dp)
+    // Map dB range (-60 to 0) to height range (0 to 250)
+    val normalizedHeight = ((dbValue + 60) / 60 * 250).coerceIn(0f, 250f)
+    val barHeight by animateDpAsState(normalizedHeight.dp)
     val barColor by animateColorAsState(if (isLoud) Color.Red else Color(0xFF00E676))
 
     Column(
@@ -183,7 +199,7 @@ fun SoundMeterScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Sound Level Meter", color = Color.White)
+        Text("Sound Level Meter", color = Color.White, style = MaterialTheme.typography.headlineMedium)
 
         Spacer(Modifier.height(30.dp))
 
@@ -203,10 +219,10 @@ fun SoundMeterScreen(
         }
 
         Spacer(Modifier.height(20.dp))
-        Text("Volume: ${dbValue.toInt()} dB", color = Color.White)
+        Text("Volume: ${dbValue.toInt()} dB", color = Color.White, style = MaterialTheme.typography.titleLarge)
 
         if (isLoud) {
-            Text("⚠️ Loud Environment!", color = Color.Red)
+            Text("⚠️ Loud Environment!", color = Color.Red, style = MaterialTheme.typography.titleMedium)
         }
 
         Spacer(Modifier.height(40.dp))

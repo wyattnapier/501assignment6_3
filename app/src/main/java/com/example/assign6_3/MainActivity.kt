@@ -220,12 +220,15 @@ fun SoundMeterScreen(
 
         Spacer(Modifier.height(20.dp))
         Text("Volume: ${dbValue.toInt()} dB", color = Color.White, style = MaterialTheme.typography.titleLarge)
-
+        Spacer(Modifier.height(20.dp))
+        val warningMessageHeight = 40.dp
         if (isLoud) {
-            Text("⚠️ Loud Environment!", color = Color.Red, style = MaterialTheme.typography.titleMedium)
+            Text("⚠️ Loud Environment!", color = Color.Red, style = MaterialTheme.typography.titleMedium, modifier = Modifier.height(warningMessageHeight))
+        } else {
+            Spacer(Modifier.height(warningMessageHeight))
         }
 
-        Spacer(Modifier.height(40.dp))
+//        Spacer(Modifier.height(10.dp))
         Row {
             Button(onClick = start, enabled = !isRecording.value) { Text("Start") }
             Spacer(Modifier.width(20.dp))
